@@ -102,17 +102,17 @@ To scope a slug by a reference association, pass `:scope`:
 ```ruby
 class Company
   include Mongoid::Document
-  
+
   references_many :employees
 end
 
 class Employee
   include Mongoid::Document
   include Mongoid::Slug
-  
+
   field :name
   referenced_in :company
-  
+
   slug  :name, :scope => :company
 end
 ```
@@ -131,10 +131,10 @@ The value of `:scope` can alternatively be a field within the model itself:
 class Employee
   include Mongoid::Document
   include Mongoid::Slug
-  
+
   field :name
   field :company_id
-  
+
   slug  :name, :scope => :company_id
 end
 ```
@@ -149,9 +149,9 @@ To specify that the history of a document should be kept track of, pass
 class Page
   include Mongoid::Document
   include Mongoid::Slug
-  
+
   field :title
-  
+
   slug :title, history: true
 end
 ```
@@ -187,7 +187,7 @@ friend.slug # => 'admin-1'
 Adhoc checking whether a string is unique on a per Model basis
 --------------------------------------------------------------
 
-Lets say you want to have a auto-suggest function on your GUI that could provide a preview of what the url or slug could be before the form to create the record was submitted.
+Lets say you want to have an auto-suggest function on your GUI that could provide a preview of what the url or slug could be before the form to create the record is submitted.
 
 You can use the UniqueSlug class in your server side code to do this, e.g.
 
