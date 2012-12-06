@@ -359,6 +359,27 @@ module Mongoid
       end
     end
 
+    context "when :history is passed with :only_match_newest" do
+      let(:movie) do
+        Movie.create(:title => "Old Movie Title")
+      end
+
+      before(:each) do
+        movie.title = "New Movie Title"
+        movie.save
+      end
+
+      it "should not match old slugs in the history" do
+        lambda {
+          Movie.find_by_slug!("old-movie-title")
+        }.should raise_error(Mongoid::Errors::DocumentNotFound)
+      end
+
+      it "should match the newest slug" do
+        Movie.find_by_slug!("new-movie-title").should eql movie
+      end
+    end
+
     context "when slug is scoped by a reference association" do
       let(:author) do
         book.authors.create(:first_name => "Gilles", :last_name  => "Deleuze")

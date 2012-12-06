@@ -8,7 +8,8 @@ module Mongoid
                      :slug_scope,
                      :slugged_attributes,
                      :url_builder,
-                     :history
+                     :history,
+                     :only_match_newest
 
       field :_slugs, type: Array, default: []
       alias_attribute :slugs, :_slugs
@@ -53,6 +54,7 @@ module Mongoid
         self.reserved_words        = options[:reserve] || Set.new([:new, :edit])
         self.slugged_attributes    = fields.map &:to_s
         self.history               = options[:history]
+        self.only_match_newest     = options[:only_match_newest]
 
         unless embedded?
           if slug_scope
@@ -117,7 +119,7 @@ module Mongoid
       _new_slug = find_unique_slug
       self._slugs.delete(_new_slug)
       if !!self.history
-        self._slugs << _new_slug
+        self._slugs.unshift(_new_slug)
       else
         self._slugs = [_new_slug]
       end
@@ -146,12 +148,12 @@ module Mongoid
     # @return [String] A string which Action Pack uses for constructing an URL
     # to this record.
     def to_param
-      unless _slugs.last
+      unless _slugs.first
         build_slug
         save
       end
 
-      _slugs.last
+      _slugs.first
     end
     alias_method :slug, :to_param
 

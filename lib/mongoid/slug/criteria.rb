@@ -77,9 +77,9 @@ module Mongoid
         true
       end
 
-
       def for_slugs(slugs)
-        where({ _slugs: { '$in' => slugs } }).limit(slugs.length)
+        query = klass.only_match_newest ? "_slugs.0" : "_slugs"
+        criteria.where({ query => { '$in' => slugs } } ).limit(slugs.length)
       end
 
       def execute_or_raise_for_slugs(slugs, multi)
