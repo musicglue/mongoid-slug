@@ -9,7 +9,8 @@ module Mongoid
                      :slugged_attributes,
                      :url_builder,
                      :history,
-                     :only_match_newest
+                     :only_match_newest,
+                     :unique_scope
 
       field :_slugs, type: Array, default: []
       alias_attribute :slugs, :_slugs
