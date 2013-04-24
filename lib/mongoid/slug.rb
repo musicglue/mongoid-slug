@@ -52,7 +52,7 @@ module Mongoid
         options = fields.extract_options!
 
         self.slug_scope            = options[:scope]
-        self.unique_scope          = options[:unique]  || true
+        self.unique_scope          = options[:unique] == false ? false  : true
         self.reserved_words        = options[:reserve] || Set.new([:new, :edit])
         self.slugged_attributes    = fields.map &:to_s
         self.history               = options[:history]
