@@ -54,20 +54,22 @@ module Mongoid
         self.slug_scope            = options[:scope]
         self.unique_scope          = options[:unique] == false ? false  : true
         self.reserved_words        = options[:reserve] || Set.new([:new, :edit])
-        self.slugged_attributes    = fields.map &:to_s
+        self.slugged_attributes    = fields.map(&:to_s)
         self.history               = options[:history]
         self.only_match_newest     = options[:only_match_newest]
+
+        index_field = self.only_match_newest ? "_slugs.0" : "_slugs"
 
         unless embedded?
           if slug_scope
             scope_key = (metadata = self.reflect_on_association(slug_scope)) ? metadata.key : slug_scope
             if unique_scope
-              index({scope_key => 1, _slugs: 1}, {unique: true})
+              index({scope_key => 1,  index_field => 1}, {unique: true})
             else
-              index({scope_key => 1, _slugs: 1})
+              index({scope_key => 1,  index_field => 1})
             end
           else
-            index({_slugs: 1}, {unique: true})
+            index({ index_field => 1}, {unique: true})
           end
         end
 
