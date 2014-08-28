@@ -1,5 +1,98 @@
 # CHANGELOG
 
+* Gemfile changes ( johnnyshields - #173 )
+* Made thread safe ( jaxesn - #168 )
+* Improve support for Mongoid::Paranoia (johnnyshields - #165)
+
+## 3.2.2
+
+## Bugfixes
+
+* Avoid scope error in tests (johnnyshields - #163)
+* require activesupport dependencies to fix error in test on ruby 1.9.3 and Mongoid 4 (digitalplaywright)
+
+## 3.2.1
+
+### Improvements
+* Bump Mongoid 4 requirement to beta1 
+
+### Bugfixes
+
+* fix for Mongoid4 (blackxored)
+* fix translation tests (digitalplaywright) 
+* Add sparse option to slug index (klacointe)
+
+## 3.2.0
+
+### Improvements
+
+* update stringex dependency to 2.0 or higher
+* Mongoid 4 support (dblock)
+
+### Bugfixes
+
+* Fix for when using localized slug with custom slug building strategy on virtual attrbitues (asjohn)
+
+## 3.1.2
+
+### Bugfixes
+
+* fixes for i8n slug generation (astjohn)
+* don't use unique indexes with polymorphics (pdf)
+
+### Improvements
+
+* refactoring of test cases (lucasrenan)
+
+## 3.1.1
+
+### Bugfixes
+
+* do not generate empty slug. Resolves: #121, #122 (digitalplaywright)
+
+## 3.1.0
+
+### New Features 
+
+* optionally slugs are created and found per model type (joe1chen)
+
+### Bugfixes
+
+* fix issue with default scope and slug uniqueness (loopj)
+
+## 3.0.0
+
+### Bugfixes
+
+* Avoid using reserved words as slugs (deepakkumarnd)
+* Fix localized slug creation when using history and when the locale changes after document is created (byscripts)
+* Improved specs for reserved words (astjohn)
+* Mongoid Paranoia specs aded (simi)
+* Fix Mongoid Slug for Ruby 2.0.0 (digitalplaywright)
+
+### New Features
+
+* Make slugs localizable by option (xslim)
+
+## 2.0.1
+
+###Bugfixes
+
+* fix wrong homepage link in gemspec (digitalplaywright)
+
+## 2.0.0
+
+### New Features
+
+* Separate out unique finding logic into own class (guyboertje)
+* Enable custom specification of looks_like_slug? method (guyboertje)
+
+### Major Changes (Backwards Incompatible)
+
+* calling `to_param` on a document without a slug no longer builds a slug and
+  persists the document (gerad)
+* remove transfer from history (guyboertje)
+
 ## 1.0.1
 
 ###Bugfixes

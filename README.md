@@ -1,4 +1,4 @@
-*IMPORTANT:*  If you are upgrading to Mongoid Slug 1.0.0 please migrate in accordance with the instructions in https://github.com/digitalplaywright/mongoid-slug/wiki/How-to-upgrade-to-1.0.0.
+*IMPORTANT:*  If you are upgrading to Mongoid Slug 1.0.0 please migrate in accordance with the instructions in https://github.com/digitalplaywright/mongoid-slug/wiki/How-to-upgrade-to-1.0.0-or-newer.
 Mongoid Slug 1.0.0  stores the slugs in a single field _slugs of array type, and all previous slugs must be migrated.
 
 Mongoid Slug
@@ -8,7 +8,7 @@ Mongoid Slug generates a URL slug or permalink based on one or more fields in a
 Mongoid model. It sits idly on top of [stringex] [1], supporting non-Latin
 characters.
 
-[![Build Status](https://secure.travis-ci.org/digitalplaywright/mongoid-slug.png)](http://travis-ci.org/digitalplaywright/mongoid-slug)
+[![Build Status](https://secure.travis-ci.org/digitalplaywright/mongoid-slug.png)](http://travis-ci.org/digitalplaywright/mongoid-slug) [![Dependency Status](https://gemnasium.com/digitalplaywright/mongoid-slug.png)](https://gemnasium.com/digitalplaywright/mongoid-slug) [![Code Climate](https://codeclimate.com/github/digitalplaywright/mongoid-slug.png)](https://codeclimate.com/github/digitalplaywright/mongoid-slug)
 
 Installation
 ------------
@@ -69,7 +69,7 @@ Post.fields['_id'].type
 => String
 post = Post.find 'a-thousand-plateaus' # Finds by slugs
 => ...
-post = Post.find '....1000/Plateus' # Finds by ids
+post = Post.find '50b1386a0482939864000001' # Finds by bson ids
 => ...
 ```
 [Read here] [4] for all available options.
@@ -80,7 +80,7 @@ Custom Slug Generation
 By default Mongoid Slug generates slugs with stringex. If this is not desired you can
 define your own slug generator like this:
 
-```
+```ruby
 class Caption
   include Mongoid::Document
   include Mongoid::Slug
@@ -91,8 +91,8 @@ class Caption
     cur_object.slug_builder.to_url
   end
 end
-
 ```
+You can call stringex `to_url` method.
 
 Scoping
 -------
@@ -137,6 +137,51 @@ class Employee
 
   slug  :name, :scope => :company_id
 end
+```
+
+Optionally find and create slugs per model type
+-------
+
+By default when using STI, the scope will be around the super-class.
+
+```ruby
+class Book
+  include Mongoid::Document
+  include Mongoid::Slug
+  field :title
+
+  slug  :title, :history => true
+  embeds_many :subjects
+  has_many :authors
+end
+
+class ComicBook < Book
+end
+
+book = Book.create(:title => "Anti Oedipus")
+comic_book = ComicBook.create(:title => "Anti Oedipus")
+comic_book.slugs.should_not eql(book.slugs)
+```
+
+If you want the scope to be around the subclass, then set the option :by_model_type => true.
+
+```ruby
+class Book
+  include Mongoid::Document
+  include Mongoid::Slug
+  field :title
+
+  slug  :title, :history => true, :by_model_type => true
+  embeds_many :subjects
+  has_many :authors
+end
+
+class ComicBook < Book
+end
+
+book = Book.create(:title => "Anti Oedipus")
+comic_book = ComicBook.create(:title => "Anti Oedipus")
+comic_book.slugs.should eql(book.slugs)
 ```
 
 History
@@ -184,6 +229,60 @@ Friend.find('admin') # => nil
 friend.slug # => 'admin-1'
 ```
 
+When reserved words are not specified, the words 'new' and 'edit' are considered reserved by default.
+Specifying an array of custom reserved words will overwrite these defaults.
+
+Localize Slug
+--------------
+
+The slug can be localized:
+
+```ruby
+class PageSlugLocalize
+  include Mongoid::Document
+  include Mongoid::Slug
+
+  field :title, localize: true
+  slug  :title, localize: true
+end
+```
+
+This feature is built upon Mongoid localized fields, so fallbacks and localization
+works as documented in the Mongoid manual.
+
+PS! A migration is needed to use Mongoid localized fields for documents that was created when this
+feature was off. Anything else will cause errors.
+
+Custom Find Strategies
+--------------
+
+By default find will search for the document by the id field if the provided id
+looks like a BSON::ObjectId, and it will otherwise find by the _slugs field. However,
+custom strategies can ovveride the default behavior, like e.g:
+
+```ruby
+module Mongoid::Slug::UuidIdStrategy
+  def self.call id
+    id =~ /\A([0-9a-fA-F]){8}-(([0-9a-fA-F]){4}-){3}([0-9a-fA-F]){12}\z/
+  end
+end
+```
+
+Use a custom strategy by adding the slug_id_strategy annotation to the _id field:
+
+```ruby
+class Entity
+  include Mongoid::Document
+  include Mongoid::Slug
+
+  field :_id, type: String, slug_id_strategy: UuidIdStrategy
+
+  field :user_edited_variation
+  slug  :user_edited_variation, :history => true
+end
+```
+
+
 Adhoc checking whether a string is unique on a per Model basis
 --------------------------------------------------------------
 
@@ -198,7 +297,37 @@ unique = Mongoid::Slug::UniqueSlug.new(Book.new).find_unique(title)
 # return some representation of unique
 ```
 
+
+Mongoid::Paranoia Support
+-------------------------
+
+The [Mongoid::Paranoia](http://github.com/simi/mongoid-paranoia) gem adds "soft-destroy" functionality to Mongoid documents.
+Mongoid::Slug contains special handling for Mongoid::Paranoia:
+- When destroying a paranoid document, the slug will be unset from the database.
+- When restoring a paranoid document, the slug will be rebuilt. Note that the new slug may not match the old one.
+- When resaving a destroyed paranoid document, the slug will remain unset in the database.
+- For indexing purposes, sparse unique indexes are used. The sparse condition will ignore any destroyed paranoid documents, since their slug is not set in database.
+
+```ruby
+class Entity
+  include Mongoid::Document
+  include Mongoid::Slug
+  include Mongoid::Paranoia
+end
+```
+
+The following variants of Mongoid Paranoia are officially supported:
+* Mongoid 3 built-in Mongoid::Paranoia
+* Mongoid 4 gem http://github.com/simi/mongoid-paranoia
+
+Mongoid 4 gem "mongoid-paranoia" (http://github.com/haihappen/mongoid-paranoia)
+is not officially supported but should also work.
+
+
+References
+----------
+
 [1]: https://github.com/rsl/stringex/
 [2]: https://secure.travis-ci.org/hakanensari/mongoid-slug.png
 [3]: http://travis-ci.org/hakanensari/mongoid-slug
-[4]: https://github.com/hakanensari/mongoid-slug/blob/master/lib/mongoid/slug.rb
+[4]: https://github.com/digitalplaywright/mongoid-slug/blob/master/lib/mongoid/slug.rb

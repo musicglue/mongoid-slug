@@ -4,7 +4,7 @@ require 'forwardable'
 module Mongoid
   module Slug
     class UniqueSlug
-
+      MUTEX_FOR_SLUG = Mutex.new
       class SlugState
         attr_reader :last_entered_slug, :existing_slugs, :existing_history_slugs, :sorted_existing
 
@@ -62,8 +62,8 @@ module Mongoid
       attr_reader :model, :_slug
 
       def_delegators :@model, :slug_scope, :reflect_on_association, :read_attribute,
-        :check_against_id, :reserved_words, :url_builder, :metadata,
-        :collection_name, :embedded?, :reflect_on_all_associations
+        :check_against_id, :reserved_words, :url_builder, :collection_name,
+        :embedded?, :reflect_on_all_associations, :by_model_type
 
       def initialize model
         @model = model
@@ -71,42 +71,52 @@ module Mongoid
         @state = nil
       end
 
+      def metadata
+        @model.respond_to?(:relation_metadata) ? @model.relation_metadata : @model.metadata
+      end
+
       def find_unique attempt = nil
-        @_slug = if attempt
-          attempt.to_url
-        else
-          url_builder.call(model)
+        MUTEX_FOR_SLUG.synchronize do
+          @_slug = if attempt
+            attempt.to_url
+          else
+            url_builder.call(model)
+          end
+          # Regular expression that matches slug, slug-1, ... slug-n
+          # If slug_name field was indexed, MongoDB will utilize that
+          # index to match /^.../ pattern.
+          pattern = /^#{Regexp.escape(@_slug)}(?:-(\d+))?$/
+  
+          where_hash = {}
+          where_hash[:_slugs.all] = [pattern]
+          where_hash[:_id.ne]     = model._id
+  
+          if (scope = slug_scope) && reflect_on_association(scope).nil?
+            # scope is not an association, so it's scoped to a local field
+            # (e.g. an association id in a denormalized db design)
+            where_hash[scope] = model.try(:read_attribute, scope)
+          end
+  
+          if by_model_type == true
+            where_hash[:_type] = model.try(:read_attribute, :_type)
+          end
+  
+          @state = SlugState.new @_slug, uniqueness_scope.unscoped.where(where_hash), pattern
+  
+          # do not allow a slug that can be interpreted as the current document id
+          @state.include_slug unless model.class.look_like_slugs?([@_slug])
+  
+          # make sure that the slug is not equal to a reserved word
+          @state.include_slug if reserved_words.any? { |word| word === @_slug }
+  
+          # only look for a new unique slug if the existing slugs contains the current slug
+          # - e.g if the slug 'foo-2' is taken, but 'foo' is available, the user can use 'foo'.
+          if @state.slug_included?
+            highest = @state.highest_existing_counter
+            @_slug += "-#{highest.succ}"
+          end
+          @_slug
         end
-        # Regular expression that matches slug, slug-1, ... slug-n
-        # If slug_name field was indexed, MongoDB will utilize that
-        # index to match /^.../ pattern.
-        pattern = /^#{Regexp.escape(_slug)}(?:-(\d+))?$/
-
-        where_hash = {}
-        where_hash[:_slugs.all] = [pattern]
-        where_hash[:_id.ne]     = model._id
-
-        if (scope = slug_scope) && reflect_on_association(scope).nil?
-          # scope is not an association, so it's scoped to a local field
-          # (e.g. an association id in a denormalized db design)
-          where_hash[scope] = model.try(:read_attribute, scope)
-        end
-
-        @state = SlugState.new _slug, uniqueness_scope.where(where_hash), pattern
-
-        # do not allow a slug that can be interpreted as the current document id
-        @state.include_slug unless model.class.look_like_slugs?([_slug])
-
-        # make sure that the slug is not equal to a reserved word
-        @state.include_slug if reserved_words.any? { |word| word === _slug }
-
-        # only look for a new unique slug if the existing slugs contains the current slug
-        # - e.g if the slug 'foo-2' is taken, but 'foo' is available, the user can use 'foo'.
-        if @state.slug_included?
-          highest = @state.highest_existing_counter
-          @_slug += "-#{highest.succ}"
-        end
-        _slug
       end
 
       def uniqueness_scope
@@ -128,7 +138,7 @@ module Mongoid
 
         if embedded?
           parent_metadata = reflect_on_all_associations(:embedded_in)[0]
-          return model._parent.send(parent_metadata.inverse_of || model.metadata.name)
+          return model._parent.send(parent_metadata.inverse_of || self.metadata.name)
         end
 
         #unless embedded or slug scope, return the deepest document superclass

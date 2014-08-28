@@ -1,5 +1,5 @@
 module Mongoid #:nodoc:
   module Slug
-    VERSION = '1.0.0'
+    VERSION = '3.2.1'
   end
 end
