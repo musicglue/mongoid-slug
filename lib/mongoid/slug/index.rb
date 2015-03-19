@@ -9,7 +9,7 @@ module Mongoid
         # The order of field keys is intentional.
         # See: http://docs.mongodb.org/manual/core/index-compound/
         fields = {}
-        fields[:_type] = 1       if by_model_type
+        fields[:_type] = 1 if by_model_type
         fields[scope_key] = 1 if scope_key
         fields[:_slugs] = 1
 
