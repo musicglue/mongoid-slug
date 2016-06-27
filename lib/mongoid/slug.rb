@@ -23,6 +23,7 @@ module Mongoid
                      :slug_history,
                      :slug_by_model_type,
                      :slug_max_length
+                     :slug_suffixless_first
 
       # field :_slugs, type: Array, default: [], localize: false
       # alias_attribute :slugs, :_slugs
@@ -81,6 +82,7 @@ module Mongoid
         self.slug_history          = options[:history]
         self.slug_by_model_type    = options[:by_model_type]
         self.slug_max_length       = options.key?(:max_length) ? options[:max_length] : MONGO_INDEX_KEY_LIMIT_BYTES - 32
+        self.slug_suffixless_first = options[:suffixless_first_slug] || false
 
         field :_slugs, type: Array, localize: options[:localize]
         alias_attribute :slugs, :_slugs

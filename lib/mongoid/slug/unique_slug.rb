@@ -116,7 +116,11 @@ module Mongoid
           # - e.g if the slug 'foo-2' is taken, but 'foo' is available, the user can use 'foo'.
           if @state.slug_included?
             highest = @state.highest_existing_counter
-            @_slug += "-#{highest.succ}"
+            unless highest == 0 && model.class.slug_suffixless_first && @state.existing_slugs.count == 1
+              next_number = highest.succ
+              next_number = 2 if highest == 0 && @state.existing_slugs.count == 2
+              @_slug += "-#{next_number}"
+            end
           end
           @_slug
         end
