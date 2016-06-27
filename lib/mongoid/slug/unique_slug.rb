@@ -86,34 +86,38 @@ module Mongoid
           # If slug_name field was indexed, MongoDB will utilize that
           # index to match /^.../ pattern.
           pattern = /^#{Regexp.escape(@_slug)}(?:-(\d+))?$/
-  
+
           where_hash = {}
           where_hash[:_slugs.all] = [pattern]
           where_hash[:_id.ne]     = model._id
-  
+
           if (scope = slug_scope) && reflect_on_association(scope).nil?
             # scope is not an association, so it's scoped to a local field
             # (e.g. an association id in a denormalized db design)
             where_hash[scope] = model.try(:read_attribute, scope)
           end
-  
+
           if by_model_type == true
             where_hash[:_type] = model.try(:read_attribute, :_type)
           end
-  
+
           @state = SlugState.new @_slug, uniqueness_scope.unscoped.where(where_hash), pattern
-  
+
           # do not allow a slug that can be interpreted as the current document id
           @state.include_slug unless model.class.look_like_slugs?([@_slug])
-  
+
           # make sure that the slug is not equal to a reserved word
           @state.include_slug if reserved_words.any? { |word| word === @_slug }
-  
+
           # only look for a new unique slug if the existing slugs contains the current slug
           # - e.g if the slug 'foo-2' is taken, but 'foo' is available, the user can use 'foo'.
           if @state.slug_included?
             highest = @state.highest_existing_counter
-            @_slug += "-#{highest.succ}"
+            unless highest == 0 && model.class.suffixless_first_slug && @state.existing_slugs.count == 1
+              next_number = highest.succ
+              next_number = 2 if highest == 0 && @state.existing_slugs.count == 2
+              @_slug += "-#{next_number}"
+            end
           end
           @_slug
         end
