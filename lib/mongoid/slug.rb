@@ -18,7 +18,8 @@ module Mongoid
                      :url_builder,
                      :history,
                      :by_model_type,
-                     :suffixless_first_slug
+                     :suffixless_first_slug,
+                     :other_scopes
 
       # field :_slugs, type: Array, default: [], localize: false
       # alias_attribute :slugs, :_slugs
@@ -65,6 +66,7 @@ module Mongoid
         self.history               = options[:history]
         self.by_model_type         = options[:by_model_type]
         self.suffixless_first_slug = options[:suffixless_first_slug] || false
+        self.other_scopes          = [options[:other_scopes] || nil].flatten.compact
 
         field :_slugs, type: Array, default: [], localize: options[:localize]
         alias_attribute :slugs, :_slugs
