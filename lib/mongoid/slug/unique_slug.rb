@@ -5,23 +5,26 @@ module Mongoid
   module Slug
     class UniqueSlug
       MUTEX_FOR_SLUG = Mutex.new
+
       class SlugState
         attr_reader :last_entered_slug, :existing_slugs, :existing_history_slugs, :sorted_existing
 
-        def initialize(slug, documents, pattern)
+        def initialize(slug, scopes, pattern)
           @slug = slug
-          @documents = documents
           @pattern = pattern
           @last_entered_slug = []
           @existing_slugs = []
           @existing_history_slugs = []
           @sorted_existing = []
-          @documents.each do |doc|
-            history_slugs = doc._slugs
-            next if history_slugs.nil?
-            existing_slugs.push(*history_slugs.find_all { |cur_slug| cur_slug =~ @pattern })
-            last_entered_slug.push(*history_slugs.last) if history_slugs.last =~ @pattern
-            existing_history_slugs.push(*history_slugs.first(history_slugs.length - 1).find_all { |cur_slug| cur_slug =~ @pattern })
+
+          scopes.each do |scope|
+            scope.each do |doc|
+              history_slugs = doc._slugs
+              next if history_slugs.nil?
+              existing_slugs.push(*history_slugs.find_all { |cur_slug| cur_slug =~ @pattern })
+              last_entered_slug.push(*history_slugs.last) if history_slugs.last =~ @pattern
+              existing_history_slugs.push(*history_slugs.first(history_slugs.length - 1).find_all { |cur_slug| cur_slug =~ @pattern })
+            end
           end
         end
 
@@ -104,7 +107,10 @@ module Mongoid
             where_hash[:_type] = model.try(:read_attribute, :_type)
           end
 
-          @state = SlugState.new @_slug, uniqueness_scope.unscoped.where(where_hash), pattern
+          scope_list = [uniqueness_scope.unscoped.where(where_hash)] +
+                       @model.class.slug_other_scopes.map { |scope| scope.call(@model) }
+
+          @state = SlugState.new @_slug, scope_list, pattern
 
           # do not allow a slug that can be interpreted as the current document id
           @state.include_slug unless model.class.look_like_slugs?([@_slug])
@@ -128,7 +134,6 @@ module Mongoid
 
       def uniqueness_scope
         if slug_scope && (metadata = reflect_on_association(slug_scope))
-
           parent = model.send(metadata.name)
 
           # Make sure doc is actually associated with something, and that
