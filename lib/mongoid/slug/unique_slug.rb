@@ -103,8 +103,10 @@ module Mongoid
             where_hash[:_type] = model.try(:read_attribute, :_type)
           end
 
-          scope_list = [uniqueness_scope.unscoped.where(where_hash)] +
-                       @model.class.other_scopes.map { |scope| scope.call(@model) }
+          scope_list = (
+            [uniqueness_scope.unscoped] +
+            @model.class.other_scopes.map { |scope| scope.call(@model) }
+          ).map { |scope| scope.where(where_hash) }
 
           @state = SlugState.new @_slug, scope_list, pattern
 
