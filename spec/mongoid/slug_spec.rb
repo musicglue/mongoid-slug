@@ -456,18 +456,20 @@ module Mongoid
     context "when slug has other scopes" do
       context 'and the preferred slugs dont clash' do
         it 'uses the preferred slugs' do
-          model_a = MultiScopeModelA.create(name: 'foo')
-          model_b = MultiScopeModelB.create(name: 'bar')
+          owner = MultiScopeModelOwner.create!(name: 'mr owner')
+          model_a = MultiScopeModelA.create!(name: 'foo', owner: owner)
+          model_b = MultiScopeModelB.create!(name: 'bar', owner: owner)
 
           model_a.to_param.should eql 'foo'
           model_b.to_param.should eql 'bar'
         end
 
         it 'does not affect the usual slug selection process' do
-          model_a = MultiScopeModelA.create(name: 'foo')
-          model_b = MultiScopeModelB.create(name: 'bar')
-          model_a = MultiScopeModelA.create(name: 'foo')
-          model_b = MultiScopeModelB.create(name: 'bar')
+          owner = MultiScopeModelOwner.create!(name: 'mr owner')
+          model_a = MultiScopeModelA.create!(name: 'foo', owner: owner)
+          model_b = MultiScopeModelB.create!(name: 'bar', owner: owner)
+          model_a = MultiScopeModelA.create!(name: 'foo', owner: owner)
+          model_b = MultiScopeModelB.create!(name: 'bar', owner: owner)
 
           model_a.to_param.should eql 'foo-1'
           model_b.to_param.should eql 'bar-1'
@@ -477,8 +479,9 @@ module Mongoid
       context 'and the preferred slugs clash' do
         context 'the scope does not depend on the model in question' do
           it 'selects the next appropriate slug' do
-            model_a = MultiScopeModelA.create(name: 'foo');
-            model_b = MultiScopeModelB.create(name: 'foo');
+            owner = MultiScopeModelOwner.create!(name: 'mr owner')
+            model_a = MultiScopeModelA.create!(name: 'foo', owner: owner);
+            model_b = MultiScopeModelB.create!(name: 'foo', owner: owner);
 
             model_a.to_param.should eql 'foo'
             model_b.to_param.should eql 'foo-1'
@@ -488,8 +491,9 @@ module Mongoid
         context 'the scope does depend on the model in question' do
           context 'there is a clash' do
             it 'selects the appropriate next slug' do
-              model_a = MultiScopeModelA.create(name: 'foo', owner_id: '643fde2b-6a2c-4fcf-a808-680390f68104');
-              model_c = MultiScopeModelC.create(name: 'foo', owner_id: '643fde2b-6a2c-4fcf-a808-680390f68104');
+              owner = MultiScopeModelOwner.create!(name: 'mr owner')
+              model_a = MultiScopeModelA.create!(name: 'foo', owner: owner)
+              model_c = MultiScopeModelC.create!(name: 'foo', owner: owner)
 
               model_a.to_param.should eql 'foo'
               model_c.to_param.should eql 'foo-1'
@@ -498,8 +502,10 @@ module Mongoid
 
           context 'there is no clash' do
             it 'uses the preferred slug' do
-              model_a = MultiScopeModelA.create(name: 'foo', owner_id: '643fde2b-6a2c-4fcf-a808-680390f68104');
-              model_c = MultiScopeModelC.create(name: 'foo', owner_id: 'd66287c5-bf3b-4aaa-9cd9-9c7ed66df48f');
+              owner = MultiScopeModelOwner.create!(name: 'mr owner')
+              owner2 = MultiScopeModelOwner.create!(name: 'mrs owner')
+              model_a = MultiScopeModelA.create!(name: 'foo', owner: owner);
+              model_c = MultiScopeModelC.create!(name: 'foo', owner: owner2);
 
               model_a.to_param.should eql 'foo'
               model_c.to_param.should eql 'foo'
