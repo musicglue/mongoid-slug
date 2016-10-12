@@ -1,9 +1,15 @@
+class MultiScopeModelOwner
+  include Mongoid::Document
+
+  field :name
+end
+
 class MultiScopeModelA
   include Mongoid::Document
   include Mongoid::Slug
 
   field :name
-  field :owner_id
+  belongs_to :owner, class_name: "MultiScopeModelOwner"
 
   slug  :name
 end
@@ -13,9 +19,9 @@ class MultiScopeModelB
   include Mongoid::Slug
 
   field :name
-  field :owner_id
+  belongs_to :owner, class_name: "MultiScopeModelOwner"
 
-  slug  :name, scope: :owner_id, other_scopes: ->(doc) { MultiScopeModelA.scoped }
+  slug  :name, scope: :owner, other_scopes: ->(doc) { MultiScopeModelA.scoped }
 end
 
 class MultiScopeModelC
@@ -23,8 +29,8 @@ class MultiScopeModelC
   include Mongoid::Slug
 
   field :name
-  field :owner_id
+  belongs_to :owner, class_name: "MultiScopeModelOwner"
 
-  slug  :name, scope: :owner_id, other_scopes: ->(doc) { MultiScopeModelA.where(owner_id: doc.owner_id) }
+  slug  :name, scope: :owner, other_scopes: ->(doc) { MultiScopeModelA.where(owner_id: doc.owner_id) }
 end
 
