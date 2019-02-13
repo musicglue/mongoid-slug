@@ -22,8 +22,8 @@ module Mongoid
                      :slug_url_builder,
                      :slug_history,
                      :slug_by_model_type,
-                     :slug_max_length
-                     :slug_suffixless_first
+                     :slug_max_length,
+                     :slug_suffixless_first,
                      :slug_other_scopes
 
       # field :_slugs, type: Array, default: [], localize: false
