@@ -1,7 +1,8 @@
-class Partner
+class Artist
   include Mongoid::Document
   include Mongoid::Slug
-  field :name
+
   slug :name
-  embedded_in :relationship
+  field :name
+  has_and_belongs_to_many :artworks
 end

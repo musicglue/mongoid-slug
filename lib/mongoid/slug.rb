@@ -2,27 +2,42 @@ require 'mongoid'
 require 'stringex'
 require 'mongoid/slug/criteria'
 require 'mongoid/slug/index'
-require 'mongoid/slug/paranoia'
 require 'mongoid/slug/unique_slug'
 require 'mongoid/slug/slug_id_strategy'
+require 'mongoid-compatibility'
+require 'mongoid/slug/railtie' if defined?(Rails)
 
 module Mongoid
   # Slugs your Mongoid model.
   module Slug
     extend ActiveSupport::Concern
 
+    MONGO_INDEX_KEY_LIMIT_BYTES = 1024
+
     included do
-      cattr_accessor :reserved_words,
+      cattr_accessor :slug_reserved_words,
                      :slug_scope,
                      :slugged_attributes,
-                     :url_builder,
-                     :history,
-                     :by_model_type,
+                     :slug_url_builder,
+                     :slug_history,
+                     :slug_by_model_type,
+                     :slug_max_length,
                      :suffixless_first_slug,
                      :other_scopes
 
       # field :_slugs, type: Array, default: [], localize: false
       # alias_attribute :slugs, :_slugs
+    end
+
+    class << self
+      attr_accessor :default_slug
+      def configure(&block)
+        instance_eval(&block)
+      end
+
+      def slug(&block)
+        @default_slug = block if block_given?
+      end
     end
 
     module ClassMethods
@@ -44,6 +59,7 @@ module Mongoid
       #   @param options :scope [Symbol] a reference association or field to
       #   scope the slug by. Embedded documents are, by default, scoped by
       #   their parent.
+      #   @param options :max_length [Integer] the maximum length of the text portion of the slug
       #   @yield If given, a block is used to build a slug.
       #
       # @example A custom builder
@@ -61,48 +77,33 @@ module Mongoid
         options = fields.extract_options!
 
         self.slug_scope            = options[:scope]
-        self.reserved_words        = options[:reserve] || Set.new(["new", "edit"])
-        self.slugged_attributes    = fields.map &:to_s
-        self.history               = options[:history]
-        self.by_model_type         = options[:by_model_type]
+        self.slug_reserved_words   = options[:reserve] || Set.new(%w[new edit])
+        self.slugged_attributes    = fields.map(&:to_s)
+        self.slug_history          = options[:history]
+        self.slug_by_model_type    = options[:by_model_type]
         self.suffixless_first_slug = options[:suffixless_first_slug] || false
         self.other_scopes          = [options[:other_scopes] || nil].flatten.compact
+        self.slug_max_length       = options.key?(:max_length) ? options[:max_length] : MONGO_INDEX_KEY_LIMIT_BYTES - 32
 
-        field :_slugs, type: Array, default: [], localize: options[:localize]
+        field :_slugs, type: Array, localize: options[:localize]
         alias_attribute :slugs, :_slugs
 
         # Set index
-        unless embedded?
-          index(*Mongoid::Slug::Index.build_index(self.slug_scope_key, self.by_model_type, self.is_paranoid_doc?))
-        end
+        index(*Mongoid::Slug::Index.build_index(slug_scope_key, slug_by_model_type)) unless embedded?
 
-        #-- Why is it necessary to customize the slug builder?
-        default_url_builder = lambda do |cur_object|
-          cur_object.slug_builder.to_url
-        end
-
-        self.url_builder = block_given? ? block : default_url_builder
+        self.slug_url_builder = block_given? ? block : default_slug_url_builder
 
         #-- always create slug on create
         #-- do not create new slug on update if the slug is permanent
         if options[:permanent]
           set_callback :create, :before, :build_slug
         else
-          set_callback :save, :before, :build_slug, :if => :slug_should_be_rebuilt?
+          set_callback :save, :before, :build_slug, if: :slug_should_be_rebuilt?
         end
+      end
 
-        # If paranoid document:
-        # - include shim to add callbacks for restore method
-        # - unset the slugs on destroy
-        # - recreate the slug on restore
-        # - force reset the slug when saving a destroyed paranoid document, to ensure it stays unset in the database
-        if is_paranoid_doc?
-          self.send(:include, Mongoid::Slug::Paranoia) unless self.respond_to?(:before_restore)
-          set_callback :destroy, :after,  :unset_slug!
-          set_callback :restore, :before, :set_slug!
-          set_callback :save,    :before, :reset_slug!, :if => :paranoid_deleted?
-          set_callback :save,    :after,  :clear_slug!, :if => :paranoid_deleted?
-        end
+      def default_slug_url_builder
+        Mongoid::Slug.default_slug || ->(cur_object) { cur_object.slug_builder.to_url }
       end
 
       def look_like_slugs?(*args)
@@ -111,10 +112,10 @@ module Mongoid
 
       # Returns the scope key for indexing, considering associations
       #
-      # @return [ Array<Document>, Document ] Whether the document is paranoid
+      # @return [ Array<Document>, Document ]
       def slug_scope_key
-        return nil unless self.slug_scope
-        self.reflect_on_association(self.slug_scope).try(:key) || self.slug_scope
+        return nil unless slug_scope
+        reflect_on_association(slug_scope).try(:key) || slug_scope
       end
 
       # Find documents by slugs.
@@ -139,18 +140,23 @@ module Mongoid
       end
 
       def queryable
-        scope_stack.last || Criteria.new(self) # Use Mongoid::Slug::Criteria for slugged documents.
+        current_scope || Criteria.new(self) # Use Mongoid::Slug::Criteria for slugged documents.
       end
 
-      # Indicates whether or not the document includes Mongoid::Paranoia
-      #
-      # This can be replaced with .paranoid? method once the following PRs are merged:
-      # - https://github.com/simi/mongoid-paranoia/pull/19
-      # - https://github.com/haihappen/mongoid-paranoia/pull/3
-      #
-      # @return [ Array<Document>, Document ] Whether the document is paranoid
-      def is_paranoid_doc?
-        !!(defined?(::Mongoid::Paranoia) && self < ::Mongoid::Paranoia)
+      private
+
+      if Mongoid::Compatibility::Version.mongoid5_or_newer? && Threaded.method(:current_scope).arity == -1
+        def current_scope
+          Threaded.current_scope(self)
+        end
+      elsif Mongoid::Compatibility::Version.mongoid5_or_newer?
+        def current_scope
+          Threaded.current_scope
+        end
+      else
+        def current_scope
+          scope_stack.last
+        end
       end
     end
 
@@ -175,30 +181,29 @@ module Mongoid
     end
 
     def apply_slug
-      _new_slug = find_unique_slug
+      new_slug = find_unique_slug
 
-      #skip slug generation and use Mongoid id
-      #to find document instead
-      return true if _new_slug.size == 0
+      # skip slug generation and use Mongoid id
+      # to find document instead
+      return true if new_slug.size.zero?
 
       # avoid duplicate slugs
-      self._slugs.delete(_new_slug) if self._slugs
+      _slugs.delete(new_slug) if _slugs
 
-      if !!self.history && self._slugs.is_a?(Array)
-        append_slug(_new_slug)
+      if !!slug_history && _slugs.is_a?(Array)
+        append_slug(new_slug)
       else
-        self._slugs = [_new_slug]
+        self._slugs = [new_slug]
       end
     end
 
     # Builds slug then atomically sets it in the database.
-    # This is used when working with the Mongoid::Paranoia restore callback.
     #
     # This method is adapted to use the :set method variants from both
     # Mongoid 3 (two args) and Mongoid 4 (hash arg)
     def set_slug!
       build_slug
-      self.method(:set).arity == 1 ? set({_slugs: self._slugs}) : set(:_slugs, self._slugs)
+      method(:set).arity == 1 ? set(_slugs: _slugs) : set(:_slugs, _slugs)
     end
 
     # Atomically unsets the slug field in the database. It is important to unset
@@ -212,7 +217,7 @@ module Mongoid
 
     # Rolls back the slug value from the Mongoid changeset.
     def reset_slug!
-      self.reset__slugs!
+      reset__slugs!
     end
 
     # Sets the slug to its default value.
@@ -232,15 +237,7 @@ module Mongoid
 
     # @return [Boolean] Whether the slug requires to be rebuilt
     def slug_should_be_rebuilt?
-      (new_record? or _slugs_changed? or slugged_attributes_changed?) and !paranoid_deleted?
-    end
-
-    # Indicates whether or not the document has been deleted in paranoid fashion
-    # Always returns false if the document is not paranoid
-    #
-    # @return [Boolean] Whether or not the document has been deleted in paranoid fashion
-    def paranoid_deleted?
-      !!(self.class.is_paranoid_doc? and self.deleted_at != nil)
+      new_record? || _slugs_changed? || slugged_attributes_changed?
     end
 
     def slugged_attributes_changed?
@@ -256,35 +253,31 @@ module Mongoid
     # @return [String] the slug, or nil if the document does not have a slug.
     def slug
       return _slugs.last if _slugs
-      return _id.to_s
+      _id.to_s
     end
 
     def slug_builder
-      _cur_slug = nil
-      if new_with_slugs? or persisted_with_slug_changes?
-        #user defined slug
-        _cur_slug = _slugs.last
+      cur_slug = nil
+      if new_with_slugs? || persisted_with_slug_changes?
+        # user defined slug
+        cur_slug = _slugs.last
       end
-      #generate slug if the slug is not user defined or does not exist
-      _cur_slug || pre_slug_string
-    end
-
-    def self.mongoid3?
-      ::Mongoid.const_defined? :Observer
+      # generate slug if the slug is not user defined or does not exist
+      cur_slug || pre_slug_string
     end
 
     private
 
-    def append_slug(_slug)
+    def append_slug(value)
       if localized?
         # This is necessary for the scenario in which the slugged locale is not yet present
         # but the default locale is. In this situation, self._slugs falls back to the default
         # which is undesired
-        current_slugs = self._slugs_translations.fetch(I18n.locale.to_s, [])
-        current_slugs << _slug
-        self._slugs_translations = self._slugs_translations.merge(I18n.locale.to_s => current_slugs)
+        current_slugs = _slugs_translations.fetch(I18n.locale.to_s, [])
+        current_slugs << value
+        self._slugs_translations = _slugs_translations.merge(I18n.locale.to_s => current_slugs)
       else
-        self._slugs << _slug
+        _slugs << value
       end
     end
 
@@ -293,29 +286,31 @@ module Mongoid
       if localized?
         # We need to check if slugs are present for the locale without falling back
         # to a default
-        new_record? and _slugs_translations.fetch(I18n.locale.to_s, []).any?
+        new_record? && _slugs_translations.fetch(I18n.locale.to_s, []).any?
       else
-        new_record? and _slugs.present?
+        new_record? && _slugs.present?
       end
     end
 
     # Returns true if object has been persisted and has changes in the slug
     def persisted_with_slug_changes?
       if localized?
-        changes = self._slugs_change
-        return (persisted? and false) if changes.nil?
+        changes = _slugs_change
+        return (persisted? && false) if changes.nil?
 
         # ensure we check for changes only between the same locale
         original = changes.first.try(:fetch, I18n.locale.to_s, nil)
         compare = changes.last.try(:fetch, I18n.locale.to_s, nil)
-        persisted? and original != compare
+        persisted? && original != compare
       else
-        persisted? and _slugs_changed?
+        persisted? && _slugs_changed?
       end
     end
 
     def localized?
-      self.fields['_slugs'].options[:localize] rescue false
+      fields['_slugs'].options[:localize]
+    rescue StandardError
+      false
     end
 
     # Return all possible locales for model
@@ -323,15 +318,15 @@ module Mongoid
     # doing something crazy, but at the same time we need a fallback in case the model doesn't
     # have any localized attributes at all (extreme edge case).
     def all_locales
-      locales = self.slugged_attributes
-                    .map{|attr| self.send("#{attr}_translations").keys if self.respond_to?("#{attr}_translations")}
-                    .flatten.compact.uniq
+      locales = slugged_attributes
+                .map { |attr| send("#{attr}_translations").keys if respond_to?("#{attr}_translations") }
+                .flatten.compact.uniq
       locales = I18n.available_locales if locales.empty?
       locales
     end
 
     def pre_slug_string
-      self.slugged_attributes.map { |f| self.send f }.join ' '
+      slugged_attributes.map { |f| send f }.join ' '
     end
   end
 end
